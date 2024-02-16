@@ -1,5 +1,5 @@
 #pragma once
-#include <omp.h>
+//#include <omp.h>
 #include "Definitions.h"
 
 double* PhaseCorrelation(double* fft1Real, double* fft1Imag, double* fft2Real, double* fft2Imag, int width, int height);

@@ -1,7 +1,6 @@
-#include <Windows.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include "FFT.h"
 
 
@@ -190,10 +189,8 @@ void transTableSetup(int sofar[], int actual[], int remain[], int* nFact, int* n
 	factorize(*nPoints, nFact, actual);
 	if (actual[1] > maxPrimeFactor)
 	{
-		//printf("\nPrime factor of FFT length too large : %6d", actual[1]);
-		//printf("\nPlease modify the value of maxPrimeFactor in mixfft.c");
-		MessageBoxA(NULL, "actual[1] > maxPrimeFactor  olduðundan ", "Hata Oluþtu", MB_OK);
-		exit(1);
+        // Need some sort of error reporting here
+		return;
 	}
 	remain[0] = *nPoints;
 	sofar[1] = 1;

@@ -87,8 +87,8 @@ float Correlation(BYTE* img1, BYTE* img2, int width, int height, int zoneWidth, 
 
 				newC1 = c + start1W;
 				newC2 = c + start2W;
-				total1 += unsigned int(img1[newR1 * width + newC1]);
-				total2 += unsigned int(img2[newR2 * width + newC2]);
+				total1 += (unsigned int)img1[newR1 * width + newC1];
+				total2 += (unsigned int)img2[newR2 * width + newC2];
 			}
 		}
 	}

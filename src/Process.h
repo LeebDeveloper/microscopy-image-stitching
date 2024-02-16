@@ -1,5 +1,5 @@
 #pragma once
-#include <Windows.h>
+#include "Definitions.h"
 struct imagener {
 	double* Real;
 	double* Im;

@@ -1,33 +1,71 @@
+#include <cstring>
+#include <fstream>
 #include "Image.h"
-BYTE* LoadBMP(int% width, int% height, long% size, LPCTSTR bmpfile)
+#include "Definitions.h"
+
+/*
+ * Constants for the biCompression field...
+ */
+
+#define BI_RGB       0             /* No compression - straight BGR data */
+#define BI_RLE8      1             /* 8-bit run-length compression */
+#define BI_RLE4      2             /* 4-bit run-length compression */
+#define BI_BITFIELDS 3             /* RGB bitmap with RGB masks */
+
+struct BITMAPFILEHEADER {
+    WORD  bfType;
+    DWORD bfSize;
+    WORD  bfReserved1;
+    WORD  bfReserved2;
+    DWORD bfOffBits;
+};
+
+struct BITMAPINFOHEADER {
+    DWORD biSize;
+    LONG  biWidth;
+    LONG  biHeight;
+    WORD  biPlanes;
+    WORD  biBitCount;
+    DWORD biCompression;
+    DWORD biSizeImage;
+    LONG  biXPelsPerMeter;
+    LONG  biYPelsPerMeter;
+    DWORD biClrUsed;
+    DWORD biClrImportant;
+};
+
+BYTE* LoadBMP(int& width, int& height, long& size, const char* bmpfile)
 {
 	// declare bitmap structures
-	BITMAPFILEHEADER bmpheader;
+	BITMAPFILEHEADER bmpheader{};
 	BITMAPINFOHEADER bmpinfo;
 	// value to be used in ReadFile funcs
 	DWORD bytesread;
 	// open file to read from
-	HANDLE file = CreateFile(bmpfile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-	if (NULL == file)
-		return NULL; // coudn't open file
+    std::ifstream file(bmpfile, std::ios::binary);
+
+    if (!file.is_open()) {
+        return nullptr;
+    } // coudn't open file
 
 	// read file header
-	if (ReadFile(file, &bmpheader, sizeof(BITMAPFILEHEADER), &bytesread, NULL) == false) {
-		CloseHandle(file);
-		return NULL;
+    file.read(reinterpret_cast<char *>(&bmpheader), sizeof(BITMAPFILEHEADER));
+	if (file.fail()) {
+		file.close();
+		return nullptr;
 	}
 
 	//read bitmap info
-
-	if (ReadFile(file, &bmpinfo, sizeof(BITMAPINFOHEADER), &bytesread, NULL) == false) {
-		CloseHandle(file);
-		return NULL;
-	}
+    file.read(reinterpret_cast<char *>(&bmpinfo), sizeof(BITMAPINFOHEADER));
+    if (file.fail()) {
+        file.close();
+        return nullptr;
+    }
 
 	// check if file is actually a bmp
-	if (bmpheader.bfType != 'MB') {
-		CloseHandle(file);
-		return NULL;
+	if (bmpheader.bfType != 0x4d42) { // the ASCII string "BM"
+		file.close();
+		return nullptr;
 	}
 
 	// get image measurements
@@ -36,39 +74,41 @@ BYTE* LoadBMP(int% width, int% height, long% size, LPCTSTR bmpfile)
 
 	// check if bmp is uncompressed
 	if (bmpinfo.biCompression != BI_RGB) {
-		CloseHandle(file);
-		return NULL;
+        file.close();
+        return nullptr;
 	}
 
 	// check if we have 24 bit bmp
 	if (bmpinfo.biBitCount != 24) {
-		CloseHandle(file);
-		return NULL;
+        file.close();
+        return nullptr;
 	}
 
 	// create buffer to hold the data
 	size = bmpheader.bfSize - bmpheader.bfOffBits;
 	BYTE* Buffer = new BYTE[size];
 	// move file pointer to start of bitmap data
-	SetFilePointer(file, bmpheader.bfOffBits, NULL, FILE_BEGIN);
+    file.seekg(bmpheader.bfOffBits, std::ios::beg);
 	// read bmp data
-	if (ReadFile(file, Buffer, size, &bytesread, NULL) == false) {
+    file.read(reinterpret_cast<char*>(Buffer), size);
+	if (file.fail()) {
 		delete[] Buffer;
-		CloseHandle(file);
-		return NULL;
+        file.close();
+        return nullptr;
 	}
 
 	// everything successful here: close file and return buffer
 
-	CloseHandle(file);
+	file.close();
 
 	return Buffer;
 }//LoadBMP
+
 BYTE* ConvertBMPToIntensity(BYTE* Buffer, int width, int height)
 {
 	// first make sure the parameters are valid
-	if ((NULL == Buffer) || (width == 0) || (height == 0))
-		return NULL;
+	if ((Buffer == nullptr) || (width == 0) || (height == 0))
+		return nullptr;
 
 	// find the number of padding bytes
 
@@ -95,11 +135,12 @@ BYTE* ConvertBMPToIntensity(BYTE* Buffer, int width, int height)
 
 	return newbuf;
 }//ConvertToBMTToIntensity(..)
-BYTE* ConvertIntensityToBMP(BYTE* Buffer, int width, int height, long% newsize)
+
+BYTE* ConvertIntensityToBMP(BYTE* Buffer, int width, int height, long& newsize)
 {
 	// first make sure the parameters are valid
-	if ((NULL == Buffer) || (width == 0) || (height == 0))
-		return NULL;
+	if ((Buffer == nullptr) || (width == 0) || (height == 0))
+		return nullptr;
 
 	// now we have to find with how many bytes
 	// we have to pad for the next DWORD boundary	
@@ -136,7 +177,7 @@ BYTE* ConvertIntensityToBMP(BYTE* Buffer, int width, int height, long% newsize)
 
 	return newbuf;
 }//ConvertIntensityToBMP
-bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, LPCTSTR bmpfile)
+bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, const char* bmpfile)
 {
 	// declare bmp structures 
 	BITMAPFILEHEADER bmfh;
@@ -168,35 +209,36 @@ bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, LPCTSTR bmpfi
 	info.biClrImportant = 0;    // all colors are important
 
 	// now we open the file to write to
-	HANDLE file = CreateFile(bmpfile, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (file == NULL)
+    std::ofstream file(bmpfile, std::ios::binary | std::ios::trunc);
+	if (!file.is_open())
 	{
-		CloseHandle(file);
 		return false;
 	}
 
 	// write file header
-	unsigned long bwritten;
-	if (WriteFile(file, &bmfh, sizeof(BITMAPFILEHEADER), &bwritten, NULL) == false)
+    file.write(reinterpret_cast<const char*>(&bmfh), sizeof(BITMAPFILEHEADER));
+	if (file.fail())
 	{
-		CloseHandle(file);
+		file.close();
 		return false;
 	}
 	// write infoheader
-	if (WriteFile(file, &info, sizeof(BITMAPINFOHEADER), &bwritten, NULL) == false)
-	{
-		CloseHandle(file);
-		return false;
-	}
+    file.write(reinterpret_cast<const char*>(&info), sizeof(BITMAPINFOHEADER));
+    if (file.fail())
+    {
+        file.close();
+        return false;
+    }
 	// write image data
-	if (WriteFile(file, Buffer, paddedsize, &bwritten, NULL) == false)
-	{
-		CloseHandle(file);
-		return false;
-	}
+    file.write(reinterpret_cast<const char *>(Buffer), sizeof(paddedsize));
+    if (file.fail())
+    {
+        file.close();
+        return false;
+    }
 
 	// and close file
-	CloseHandle(file);
+	file.close();
 
 	return true;
 } //saveBMP

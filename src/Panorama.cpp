@@ -1,6 +1,7 @@
 ﻿#include "Panorama.h"
-#include <math.h>
-#include <omp.h>
+#include <cmath>
+#include <cstring>
+//#include <omp.h>
 #define OFFSET 6
 
 
@@ -101,9 +102,9 @@ BYTE* PanoToResized(BYTE* Raw, int Width, int Height, xy newPanoSize, xy positio
 	size_t tempR = 0, tempG = 0, tempB = 0, bufpos;
 	BYTE* panoImg = new BYTE[newPanoSizeX * newPanoSizeY * 3];
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, Raw) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, Raw) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) reduction(+:tempR, tempG, tempB) nowait
+//#pragma omp for schedule(dynamic) reduction(+:tempR, tempG, tempB) nowait
 		for (int i = 0; i < Height; i++) {
 			for (int j = 0; j < Width; j += 10) {
 				bufpos = (Height - i - 1) * Width * 3 + j * 3;
@@ -118,9 +119,9 @@ BYTE* PanoToResized(BYTE* Raw, int Width, int Height, xy newPanoSize, xy positio
 	tempG /= (int(Width / 10) * Height);
 	tempB /= (int(Width / 10) * Height);
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(newPanoSizeY, newPanoSizeX, panoImg, tempR, tempG, tempB) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(newPanoSizeY, newPanoSizeX, panoImg, tempR, tempG, tempB) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < newPanoSizeY; i++) {
 			for (int j = 0; j < newPanoSizeX; j++) {
 				bufpos = (newPanoSizeY - i - 1) * newPanoSizeX * 3 + j * 3;
@@ -133,9 +134,9 @@ BYTE* PanoToResized(BYTE* Raw, int Width, int Height, xy newPanoSize, xy positio
 	}
 
 	size_t buf1, buf2;
-#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, newPanoSizeY, positionY, newPanoSizeX, positionX, Raw, panoImg) private(buf1, buf2)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, newPanoSizeY, positionY, newPanoSizeX, positionX, Raw, panoImg) private(buf1, buf2)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < Height; i++) {
 			for (int j = 0; j < Width; j++) {
 				buf1 = (newPanoSizeY - (positionY + i) - 1) * newPanoSizeX * 3 + (j + positionX) * 3;
@@ -151,7 +152,7 @@ BYTE* PanoToResized(BYTE* Raw, int Width, int Height, xy newPanoSize, xy positio
 	return panoImg;
 }
 
-BYTE* SizeExtend(BYTE* Raw, int% width, int% height, int Width, int Height) {
+BYTE* SizeExtend(BYTE* Raw, int& width, int& height, int Width, int Height) {
 
 	bool temp = true;
 	if (width >= height) {
@@ -192,9 +193,9 @@ BYTE* SizeExtend(BYTE* Raw, int% width, int% height, int Width, int Height) {
 	BYTE* extendedImg = new BYTE[width * height * 3]();
 
 	int bufPos1, bufPos2;
-#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, height, width, Raw, extendedImg) private(bufPos1, bufPos2)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, height, width, Raw, extendedImg) private(bufPos1, bufPos2)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < Height; i++)
 			for (int j = 0; j < Width; j++) {
 				bufPos1 = (height - i - 1) * width * 3 + j * 3;
@@ -212,7 +213,7 @@ BYTE* SizeExtend(BYTE* Raw, int% width, int% height, int Width, int Height) {
 
 
 template<typename T>
-T* GaussPyramid(BYTE* Raw, int% width, int% height, T* result)
+T* GaussPyramid(BYTE* Raw, int& width, int& height, T* result)
 {
 	BYTE Filter[5][5] = { {1,4,7,4,1},
 							{4,16,26,16,4},
@@ -223,9 +224,9 @@ T* GaussPyramid(BYTE* Raw, int% width, int% height, T* result)
 	BYTE* Smooth = new BYTE[width * height * 3];
 	size_t temp1 = 0, temp2 = 0, temp3 = 0, bufpos;
 
-#pragma omp parallel num_threads(NUM_THREADS) firstprivate(bufpos, temp1, temp2, temp3)
+//#pragma omp parallel num_threads(NUM_THREADS) firstprivate(bufpos, temp1, temp2, temp3)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++)
 		{
 			for (int j = 0; j < width; j++)
@@ -285,6 +286,66 @@ T* GaussPyramid(BYTE* Raw, int% width, int% height, T* result)
 }
 
 template<typename T>
+BYTE2* Expand(T* Gauss, int width, int height)
+{
+    int Filter[5][5] = { {1,4,7,4,1},
+                         {4,16,26,16,4},
+                         {7,26,41,26,7},
+                         {4,16,26,16,4},
+                         {1,4,7,4,1} }; //273
+
+    int newwidth = ((width - 1) * 2) + 1;
+    int newheight = ((height - 1) * 2) + 1;
+
+    BYTE2* Expand = new BYTE2[newwidth * newheight * 3];
+
+    int bufpos, g_bufpos;
+    int indexi, indexj;
+    int temp1 = 0, temp2 = 0, temp3 = 0;
+    for (int i = 0; i < newheight; i++)
+    {
+        for (int j = 0; j < newwidth; j++)
+        {
+            if (i <= 1 || i >= newheight - 2 || j <= 1 || j >= newwidth - 2) {
+                indexi = i / 2;
+                indexj = j / 2;
+                bufpos = (newheight - i - 1) * newwidth * 3 + j * 3;
+                g_bufpos = (height - indexi - 1) * width * 3 + indexj * 3;
+                Expand[bufpos] = (BYTE2)Gauss[g_bufpos];
+                Expand[bufpos + 1] = (BYTE2)Gauss[g_bufpos + 1];
+                Expand[bufpos + 2] = (BYTE2)Gauss[g_bufpos + 2];
+            }
+            else {
+                for (int x = -2; x <= 2; x++)
+                {
+                    for (int y = -2; y <= 2; y++)
+                    {
+                        if ((i + x) % 2 == 0 && (j + y) % 2 == 0) {
+                            indexi = (i + x) / 2;
+                            indexj = (j + y) / 2;
+                            g_bufpos = (height - indexi - 1) * width * 3 + indexj * 3;
+                            temp1 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos];
+                            temp2 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos + 1];
+                            temp3 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos + 2];
+                        }
+                    }
+                }
+
+                temp1 /= 273;
+                temp2 /= 273;
+                temp3 /= 273;
+                bufpos = (newheight - i - 1) * newwidth * 3 + j * 3;
+                Expand[bufpos] = BYTE2(temp1 * 4);
+                Expand[bufpos + 1] = BYTE2(temp2 * 4);
+                Expand[bufpos + 2] = BYTE2(temp3 * 4);
+            }
+        }
+    }
+
+    return Expand;
+}
+
+template<typename T>
 BYTE2* Difference(BYTE* Gauss1, T* Gauss2, int width, int height) {
 
 	BYTE2* ExpandGauss = Expand(Gauss2, width, height);
@@ -294,9 +355,9 @@ BYTE2* Difference(BYTE* Gauss1, T* Gauss2, int width, int height) {
 	size_t bufpos;
 	BYTE2* Laplace = new BYTE2[width * height * 3];
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(Gauss1, ExpandGauss, Laplace, height, width) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Gauss1, ExpandGauss, Laplace, height, width) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
 				bufpos = (height - i - 1) * width * 3 + j * 3;
@@ -312,65 +373,6 @@ BYTE2* Difference(BYTE* Gauss1, T* Gauss2, int width, int height) {
 	return Laplace;
 }
 
-template<typename T>
-BYTE2* Expand(T* Gauss, int width, int height)
-{
-	int Filter[5][5] = { {1,4,7,4,1},
-							{4,16,26,16,4},
-							{7,26,41,26,7},
-							{4,16,26,16,4},
-							{1,4,7,4,1} }; //273
-
-	int newwidth = ((width - 1) * 2) + 1;
-	int newheight = ((height - 1) * 2) + 1;
-
-	BYTE2* Expand = new BYTE2[newwidth * newheight * 3];
-
-	int bufpos, g_bufpos;
-	int indexi, indexj;
-	int temp1 = 0, temp2 = 0, temp3 = 0;
-	for (int i = 0; i < newheight; i++)
-	{
-		for (int j = 0; j < newwidth; j++)
-		{
-			if (i <= 1 || i >= newheight - 2 || j <= 1 || j >= newwidth - 2) {
-				indexi = i / 2;
-				indexj = j / 2;
-				bufpos = (newheight - i - 1) * newwidth * 3 + j * 3;
-				g_bufpos = (height - indexi - 1) * width * 3 + indexj * 3;
-				Expand[bufpos] = (BYTE2)Gauss[g_bufpos];
-				Expand[bufpos + 1] = (BYTE2)Gauss[g_bufpos + 1];
-				Expand[bufpos + 2] = (BYTE2)Gauss[g_bufpos + 2];
-			}
-			else {
-				for (int x = -2; x <= 2; x++)
-				{
-					for (int y = -2; y <= 2; y++)
-					{
-						if ((i + x) % 2 == 0 && (j + y) % 2 == 0) {
-							indexi = (i + x) / 2;
-							indexj = (j + y) / 2;
-							g_bufpos = (height - indexi - 1) * width * 3 + indexj * 3;
-							temp1 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos];
-							temp2 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos + 1];
-							temp3 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos + 2];
-						}
-					}
-				}
-
-				temp1 /= 273;
-				temp2 /= 273;
-				temp3 /= 273;
-				bufpos = (newheight - i - 1) * newwidth * 3 + j * 3;
-				Expand[bufpos] = BYTE2(temp1 * 4);
-				Expand[bufpos + 1] = BYTE2(temp2 * 4);
-				Expand[bufpos + 2] = BYTE2(temp3 * 4);
-			}
-		}
-	}
-
-	return Expand;
-}
 
 BYTE GetMeanPiksel(BYTE* Raw, int i, int j, xy Size, int rgb) {
 	BYTE piksel[9], temp;
@@ -429,9 +431,9 @@ void GoruntuDuzelt(BYTE* Raw, xy Size, BYTE* tempRaw, int Width, int Height) {
 
 	size_t tempR = 0, tempG = 0, tempB = 0, bufpos;
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, tempRaw, tempR, tempG, tempB) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, tempRaw, tempR, tempG, tempB) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) reduction(+:tempR, tempG, tempB) nowait
+//#pragma omp for schedule(dynamic) reduction(+:tempR, tempG, tempB) nowait
 		for (int i = 0; i < Height; i++) {
 			for (int j = 0; j < Width; j += 10) {
 				bufpos = (Height - i - 1) * Width * 3 + j * 3;
@@ -448,9 +450,9 @@ void GoruntuDuzelt(BYTE* Raw, xy Size, BYTE* tempRaw, int Width, int Height) {
 	BYTE meanB = BYTE(tempB / (int(Width / 10) * Height));
 
 
-#pragma omp parallel num_threads(NUM_THREADS) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 1; i < Size.y - 1; i++) {
 			for (int j = 1; j < Size.x - 1; j++) {
 				bufpos = (Size.y - i - 1) * Size.x * 3 + j * 3;
@@ -477,9 +479,9 @@ BYTE* ImageToResized(double** H, BYTE* Raw, int Width, int Height, xy Size, xy p
 	size_t tempR = 0, tempG = 0, tempB = 0, bufpos;
 	BYTE* resizedImg = new BYTE[sizeX * sizeY * 3];
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, Raw, tempR, tempG, tempB) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, Raw, tempR, tempG, tempB) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) reduction(+:tempR, tempG, tempB) nowait
+//#pragma omp for schedule(dynamic) reduction(+:tempR, tempG, tempB) nowait
 		for (int i = 0; i < Height; i++) {
 			for (int j = 0; j < Width; j += 10) {
 				bufpos = (Height - i - 1) * Width * 3 + j * 3;
@@ -494,9 +496,9 @@ BYTE* ImageToResized(double** H, BYTE* Raw, int Width, int Height, xy Size, xy p
 	tempG /= (int(Width / 10) * Height);
 	tempB /= (int(Width / 10) * Height);
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(sizeY, sizeX, resizedImg, tempR, tempG, tempB) private(bufpos)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(sizeY, sizeX, resizedImg, tempR, tempG, tempB) private(bufpos)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < sizeY; i++) {
 			for (int j = 0; j < sizeX; j++) {
 				bufpos = (sizeY - i - 1) * sizeX * 3 + j * 3;
@@ -509,11 +511,11 @@ BYTE* ImageToResized(double** H, BYTE* Raw, int Width, int Height, xy Size, xy p
 	}
 
 
-#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, sizeY, positionY, sizeX, positionX, Raw, resizedImg)
+//#pragma omp parallel num_threads(NUM_THREADS) shared(Height, Width, sizeY, positionY, sizeX, positionX, Raw, resizedImg)
 	{
 		xy point;
 		int buf; int rawBuf;
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < Height; i++) {
 			for (int j = 0; j < Width; j++) {
 				point = Transfer(H, j, i);
@@ -604,10 +606,10 @@ void LaplacePyramid(double** H, BYTE* panoImg1, BYTE* img2, int panoWidth, int p
 
 BYTE2* SumLaplace(BYTE2* Laplace1, BYTE2* Laplace2, int width, int height) {
 
-#pragma omp parallel num_threads(NUM_THREADS)
+//#pragma omp parallel num_threads(NUM_THREADS)
 	{
 		int bufpos;
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++)
 		{
 			for (int j = 0; j < width; j++)
@@ -1438,9 +1440,9 @@ BYTE* PanaromicImage(double** H, int Width, int Height, xy Size, xy position, BY
 
 	BYTE* MGauss1 = M;
 	BYTE2* SLaplace1 = new BYTE2[width * height * 3];
-#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
+//#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
 				bufpos1 = (height - i - 1) * width * 3 + j * 3;
@@ -1459,9 +1461,9 @@ BYTE* PanaromicImage(double** H, int Width, int Height, xy Size, xy position, BY
 	delete[] LaplacePyramid2[0];
 
 	BYTE2* SLaplace2 = new BYTE2[width * height * 3];
-#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
+//#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
 				bufpos1 = (height - i - 1) * width * 3 + j * 3;
@@ -1479,9 +1481,9 @@ BYTE* PanaromicImage(double** H, int Width, int Height, xy Size, xy position, BY
 	delete[] LaplacePyramid2[1];
 
 	BYTE2* SLaplace3 = new BYTE2[width * height * 3];
-#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
+//#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
 				bufpos1 = (height - i - 1) * width * 3 + j * 3;
@@ -1500,9 +1502,9 @@ BYTE* PanaromicImage(double** H, int Width, int Height, xy Size, xy position, BY
 	delete[] LaplacePyramid2[2];
 
 	BYTE2* SLaplace4 = new BYTE2[width * height * 3];
-#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
+//#pragma omp parallel num_threads(NUM_THREADS) private(bufpos1)
 	{
-#pragma omp for schedule(dynamic) nowait
+//#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
 				bufpos1 = (height - i - 1) * width * 3 + j * 3;
@@ -1547,9 +1549,9 @@ BYTE* PanaromicImage(double** H, int Width, int Height, xy Size, xy position, BY
 	int sizeY = Size.y;
 	BYTE* panorama = new BYTE[sizeX * sizeY * 3];
 
-#pragma omp parallel shared(sizeX, sizeY, width, height, panorama, SLaplace1) private(bufpos1, bufpos2)
+//#pragma omp parallel shared(sizeX, sizeY, width, height, panorama, SLaplace1) private(bufpos1, bufpos2)
 	{
-#pragma omp for schedule(dynamic) nowait
+//ß#pragma omp for schedule(dynamic) nowait
 		for (int i = 0; i < sizeY; i++) {
 			for (int j = 0; j < sizeX; j++) {
 				bufpos1 = (sizeY - i - 1) * sizeX * 3 + j * 3;
@@ -1565,16 +1567,3 @@ BYTE* PanaromicImage(double** H, int Width, int Height, xy Size, xy position, BY
 	delete[] SLaplace1;
 	return panorama;
 }
-
-//BYTE* P2(double** H, int Width, int Height, xy Size, xy position, BYTE2** LaplacePyramid1, BYTE2** LaplacePyramid2, int& width, int& height, int orWidth, int orHeight, bool isFirstLine, int currCornerID, xy* currVec) 
-//{
-//	int i, j, bufpos;
-//
-//	BYTE* M = new BYTE[width * height * 3];
-//	for (i = 0; i < height * width * 3; i++)
-//		M[i] = 255;
-//
-//	M = Filtre(M, H, position, Width, Height, Size, width, height, orWidth, orHeight, isFirstLine, currCornerID, currVec);
-//
-//	return M;
-//}
