@@ -2,6 +2,7 @@
 #include <fstream>
 #include "Image.h"
 #include "Definitions.h"
+#include <cstdint>
 
 /*
  * Constants for the biCompression field...
@@ -12,31 +13,33 @@
 #define BI_RLE4      2             /* 4-bit run-length compression */
 #define BI_BITFIELDS 3             /* RGB bitmap with RGB masks */
 
+#pragma pack(push, 1)
 struct BITMAPFILEHEADER {
-    WORD  bfType;
-    DWORD bfSize;
-    WORD  bfReserved1;
-    WORD  bfReserved2;
-    DWORD bfOffBits;
+    uint16_t bfType;
+    uint32_t  bfSize;
+    uint16_t  bfReserved1;
+    uint16_t  bfReserved2;
+    uint32_t bfOffBits;
 };
 
 struct BITMAPINFOHEADER {
-    DWORD biSize;
-    LONG  biWidth;
-    LONG  biHeight;
-    WORD  biPlanes;
-    WORD  biBitCount;
-    DWORD biCompression;
-    DWORD biSizeImage;
-    LONG  biXPelsPerMeter;
-    LONG  biYPelsPerMeter;
-    DWORD biClrUsed;
-    DWORD biClrImportant;
+    uint32_t biSize;
+    int32_t biWidth;
+    int32_t  biHeight;
+    uint16_t  biPlanes;
+    uint16_t  biBitCount;
+    uint32_t biCompression;
+    uint32_t biSizeImage;
+    int32_t  biXPelsPerMeter;
+    int32_t  biYPelsPerMeter;
+    uint32_t biClrUsed;
+    uint32_t biClrImportant;
 };
+#pragma pack(pop)
 
 BYTE* LoadBMP(int& width, int& height, long& size, const char* bmpfile)
 {
-	// declare bitmap structures
+    // declare bitmap structures
 	BITMAPFILEHEADER bmpheader{};
 	BITMAPINFOHEADER bmpinfo;
 	// value to be used in ReadFile funcs
@@ -46,7 +49,7 @@ BYTE* LoadBMP(int& width, int& height, long& size, const char* bmpfile)
 
     if (!file.is_open()) {
         return nullptr;
-    } // coudn't open file
+    } // couldn't open file
 
 	// read file header
     file.read(reinterpret_cast<char *>(&bmpheader), sizeof(BITMAPFILEHEADER));
@@ -98,7 +101,6 @@ BYTE* LoadBMP(int& width, int& height, long& size, const char* bmpfile)
 	}
 
 	// everything successful here: close file and return buffer
-
 	file.close();
 
 	return Buffer;
@@ -230,7 +232,7 @@ bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, const char* b
         return false;
     }
 	// write image data
-    file.write(reinterpret_cast<const char *>(Buffer), sizeof(paddedsize));
+    file.write(reinterpret_cast<const char *>(Buffer), paddedsize);
     if (file.fail())
     {
         file.close();

@@ -17,4 +17,5 @@ add_executable(mimgstch src/main.cpp
         src/Process.h
         src/SVD.cpp
         src/SVD.h
-        src/Homography.cpp)
+        src/Homography.cpp
+)
