@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
     const std::vector<std::string_view> args(argv + 1, argv + argc);
 
     std::vector<std::filesystem::path> input_files;
-    std::filesystem::path output_file = {"out.bmp"};
+    std::filesystem::path output_file = {"out.png"};
 
     bool next_arg_is_output = false;
     for(const auto& arg: args) {

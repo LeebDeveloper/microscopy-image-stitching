@@ -1,7 +1,7 @@
 #pragma once
 #include "Definitions.h"
 
-BYTE* LoadBMP(int& width, int& height, long& size, const char* bmpfile);
-BYTE* ConvertBMPToIntensity(BYTE* Buffer, int width, int height);
-BYTE* ConvertIntensityToBMP(BYTE* Buffer, int width, int height, long& newsize);
-bool SaveBMP(BYTE* buffer, int width, int height, const char* bmpfile);
+BYTE* LoadImage(int& width, int& height, long& size, const char* bmpfile);
+BYTE* ConvertRGBToIntensity(BYTE* Buffer, int width, int height);
+BYTE* ConvertIntensityToRGB(BYTE* Buffer, int width, int height, long& newsize);
+bool SavePNG(BYTE* buffer, int width, int height, const char* bmpfile);

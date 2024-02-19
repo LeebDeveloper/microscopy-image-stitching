@@ -76,9 +76,9 @@ void stitch_images(const std::vector<path_t> &input_files, const path_t &output_
 
         if (imgCounter == 0) {
             const auto &path1 = input_files[imgCounter];
-            // LoadBMP can read only 24 bit image depth
-            buffer1 = LoadBMP(width, height, size, path1.c_str());
-            intensity1 = ConvertBMPToIntensity(buffer1, width, height);
+            // LoadImage can read only 24 bit image depth
+            buffer1 = LoadImage(width, height, size, path1.c_str());
+            intensity1 = ConvertRGBToIntensity(buffer1, width, height);
 
             outReal[0] = new double[width * height];
             outImag[0] = new double[width * height];
@@ -86,9 +86,9 @@ void stitch_images(const std::vector<path_t> &input_files, const path_t &output_
 
 
             const auto &path2 = input_files[imgCounter + 1];
-            // LoadBMP can read only 24 bit image depth
-            buffer2 = LoadBMP(width, height, size, path2.c_str());
-            intensity2 = ConvertBMPToIntensity(buffer2, width, height);
+            // LoadImage can read only 24 bit image depth
+            buffer2 = LoadImage(width, height, size, path2.c_str());
+            intensity2 = ConvertRGBToIntensity(buffer2, width, height);
 
             outReal[1] = new double[width * height];
             outImag[1] = new double[width * height];
@@ -164,8 +164,8 @@ void stitch_images(const std::vector<path_t> &input_files, const path_t &output_
             outImag[0] = outImag[1];
 
             const auto &path = input_files[imgCounter + 1];
-            buffer2 = LoadBMP(width, height, size, path.c_str());
-            intensity2 = ConvertBMPToIntensity(buffer2, width, height);
+            buffer2 = LoadImage(width, height, size, path.c_str());
+            intensity2 = ConvertRGBToIntensity(buffer2, width, height);
 
             outReal[1] = new double[width * height];
             outImag[1] = new double[width * height];
@@ -238,7 +238,7 @@ void stitch_images(const std::vector<path_t> &input_files, const path_t &output_
         imgCounter++;
     }
     if (panorama1 != nullptr) {
-        SaveBMP(
+        SavePNG(
                 panorama1,
                 prevPanoSize->x,
                 prevPanoSize->y,
