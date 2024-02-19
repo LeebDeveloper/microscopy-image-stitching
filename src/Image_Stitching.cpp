@@ -242,7 +242,6 @@ void stitch_images(const std::vector<path_t> &input_files, const path_t &output_
                 panorama1,
                 prevPanoSize->x,
                 prevPanoSize->y,
-                prevPanoSize->x * prevPanoSize->y * 3,
                 output_file.c_str());
 
         delete[] panorama1;

@@ -16,7 +16,7 @@ void FFT2D(BYTE* img, double* Output_real, double* Output_img, int width, int he
 		input_im[j] = 0.0;
 	for (i = 0; i < height; i++) {
 		for (j = 0; j < width; j++)
-			input_real[j] = double(img[i * width + j]);
+			input_real[j] = static_cast<double>(img[i * width + j]);
 
 		fft(width, input_real, input_im, out_real, out_im);
 		for (j = 0; j < width; j++) {

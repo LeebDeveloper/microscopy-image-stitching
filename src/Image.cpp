@@ -1,8 +1,10 @@
 #include <cstring>
 #include <fstream>
+#include <cmath>
 #include "Image.h"
 #include "Definitions.h"
-#include <cstdint>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 /*
  * Constants for the biCompression field...
@@ -39,71 +41,19 @@ struct BITMAPINFOHEADER {
 
 BYTE* LoadBMP(int& width, int& height, long& size, const char* bmpfile)
 {
-    // declare bitmap structures
-	BITMAPFILEHEADER bmpheader{};
-	BITMAPINFOHEADER bmpinfo;
-	// value to be used in ReadFile funcs
-	DWORD bytesread;
-	// open file to read from
-    std::ifstream file(bmpfile, std::ios::binary);
+    int w, h, ch;
+    auto image_data = stbi_load(bmpfile, &w, &h, &ch, 3);
 
-    if (!file.is_open()) {
-        return nullptr;
-    } // couldn't open file
+    size = w * h * 3;
+    width = w;
+    height = h;
 
-	// read file header
-    file.read(reinterpret_cast<char *>(&bmpheader), sizeof(BITMAPFILEHEADER));
-	if (file.fail()) {
-		file.close();
-		return nullptr;
-	}
+    auto result = new BYTE[size];
+    memcpy(result, image_data, size);
 
-	//read bitmap info
-    file.read(reinterpret_cast<char *>(&bmpinfo), sizeof(BITMAPINFOHEADER));
-    if (file.fail()) {
-        file.close();
-        return nullptr;
-    }
+    stbi_image_free(image_data);
 
-	// check if file is actually a bmp
-	if (bmpheader.bfType != 0x4d42) { // the ASCII string "BM"
-		file.close();
-		return nullptr;
-	}
-
-	// get image measurements
-	width = bmpinfo.biWidth;
-	height = abs(bmpinfo.biHeight);
-
-	// check if bmp is uncompressed
-	if (bmpinfo.biCompression != BI_RGB) {
-        file.close();
-        return nullptr;
-	}
-
-	// check if we have 24 bit bmp
-	if (bmpinfo.biBitCount != 24) {
-        file.close();
-        return nullptr;
-	}
-
-	// create buffer to hold the data
-	size = bmpheader.bfSize - bmpheader.bfOffBits;
-	BYTE* Buffer = new BYTE[size];
-	// move file pointer to start of bitmap data
-    file.seekg(bmpheader.bfOffBits, std::ios::beg);
-	// read bmp data
-    file.read(reinterpret_cast<char*>(Buffer), size);
-	if (file.fail()) {
-		delete[] Buffer;
-        file.close();
-        return nullptr;
-	}
-
-	// everything successful here: close file and return buffer
-	file.close();
-
-	return Buffer;
+    return result;
 }//LoadBMP
 
 BYTE* ConvertBMPToIntensity(BYTE* Buffer, int width, int height)
@@ -116,8 +66,8 @@ BYTE* ConvertBMPToIntensity(BYTE* Buffer, int width, int height)
 
 	int padding = 0;
 	int scanlinebytes = width * 3;
-	while ((scanlinebytes + padding) % 4 != 0)     // DWORD = 4 bytes
-		padding++;
+//	while ((scanlinebytes + padding) % 4 != 0)     // DWORD = 4 bytes
+//		padding++;
 	// get the padded scanline width
 	int psw = scanlinebytes + padding;
 
@@ -132,7 +82,7 @@ BYTE* ConvertBMPToIntensity(BYTE* Buffer, int width, int height)
 		for (int column = 0; column < width; column++) {
 			newpos = row * width + column;
 			bufpos = (height - row - 1) * psw + column * 3;
-			newbuf[newpos] = (BYTE)(0.11 * Buffer[bufpos + 2] + 0.59 * Buffer[bufpos + 1] + 0.3 * Buffer[bufpos]);
+			newbuf[newpos] = (BYTE)(0.11 * Buffer[bufpos] + 0.59 * Buffer[bufpos + 1] + 0.3 * Buffer[bufpos + 2]);
 		}
 
 	return newbuf;
@@ -179,8 +129,15 @@ BYTE* ConvertIntensityToBMP(BYTE* Buffer, int width, int height, long& newsize)
 
 	return newbuf;
 }//ConvertIntensityToBMP
-bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, const char* bmpfile)
+
+bool SaveBMP(BYTE* buffer, int width, int height, const char* bmpfile)
 {
+    auto bytes_in_row = width * 3;
+    auto padding = 0;
+    while((bytes_in_row + padding) % 4 != 0) padding++;
+
+    auto scanline_size = bytes_in_row + padding;
+
 	// declare bmp structures 
 	BITMAPFILEHEADER bmfh;
 	BITMAPINFOHEADER info;
@@ -193,7 +150,7 @@ bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, const char* b
 	bmfh.bfType = 0x4d42;       // 0x4d42 = 'BM'
 	bmfh.bfReserved1 = 0;
 	bmfh.bfReserved2 = 0;
-	bmfh.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + paddedsize;
+	bmfh.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + scanline_size * height;
 	bmfh.bfOffBits = 0x36;		// number of bytes to start of bitmap bits
 
 	// fill the infoheader
@@ -231,8 +188,21 @@ bool SaveBMP(BYTE* Buffer, int width, int height, long paddedsize, const char* b
         file.close();
         return false;
     }
+    // prepare image data
+    auto image_data = new BYTE[scanline_size * height];
+    for(auto y = 0; y < height; y++)
+    {
+        for(auto x = 0; x < width * 3; x += 3)
+        {
+            auto offset = y * scanline_size;
+            auto orig_offset = (height - y - 1) * width * 3;
+            image_data[offset + x]     = buffer[orig_offset + x + 2];
+            image_data[offset + x + 1] = buffer[orig_offset + x + 1];
+            image_data[offset + x + 2] = buffer[orig_offset + x];
+        }
+    }
 	// write image data
-    file.write(reinterpret_cast<const char *>(Buffer), paddedsize);
+    file.write(reinterpret_cast<const char *>(image_data), scanline_size * height);
     if (file.fail())
     {
         file.close();
