@@ -19,4 +19,5 @@ add_executable(mimgstch src/main.cpp
         src/SVD.h
         src/Homography.cpp
         src/stb_image.h
+        src/stb_image_write.h
 )

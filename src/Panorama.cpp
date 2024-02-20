@@ -1,9 +1,9 @@
 ﻿#include "Panorama.h"
 #include <cmath>
 #include <cstring>
+#include <arm_neon.h>
 //#include <omp.h>
 #define OFFSET 6
-
 
 xy Transfer(double** H, int x, int y) {
 	xy point;
@@ -211,82 +211,140 @@ BYTE* SizeExtend(BYTE* Raw, int& width, int& height, int Width, int Height) {
 	return extendedImg;
 }
 
+static BYTE coeff[5][5] = { {1,4,7,4,1},
+                             {4,16,26,16,4},
+                             {7,26,41,26,7},
+                             {4,16,26,16,4},
+                             {1,4,7,4,1} }; // 273
 
-template<typename T>
-T* GaussPyramid(BYTE* Raw, int& width, int& height, T* result)
+void fill_frame(BYTE* buffer, int width, int height)
 {
-	BYTE Filter[5][5] = { {1,4,7,4,1},
-							{4,16,26,16,4},
-							{7,26,41,26,7},
-							{4,16,26,16,4},
-							{1,4,7,4,1} }; // 273
+    auto rowbytes = width * 3;
 
-	BYTE* Smooth = new BYTE[width * height * 3];
-	size_t temp1 = 0, temp2 = 0, temp3 = 0, bufpos;
+    memset(buffer, 255, 2 * rowbytes);
+    memset(buffer + (height - 2) * rowbytes, 255, 2 * rowbytes);
 
-//#pragma omp parallel num_threads(NUM_THREADS) firstprivate(bufpos, temp1, temp2, temp3)
-	{
-//#pragma omp for schedule(dynamic) nowait
-		for (int i = 0; i < height; i++)
-		{
-			for (int j = 0; j < width; j++)
-			{
-				if (i <= 1 || i >= height - 2 || j <= 1 || j >= width - 2) {
-					bufpos = (height - i - 1) * width * 3 + j * 3;
-					Smooth[bufpos] = BYTE(255);
-					Smooth[bufpos + 1] = BYTE(255);
-					Smooth[bufpos + 2] = BYTE(255);
-				}
-				else
-				{
-					for (int x = -2; x <= 2; x++)
-					{
-						for (int y = -2; y <= 2; y++)
-						{
-							bufpos = (height - (i + x) - 1) * width * 3 + (j + y) * 3;
-							temp1 += size_t(Filter[x + 2][y + 2] * Raw[bufpos]);
-							temp2 += size_t(Filter[x + 2][y + 2] * Raw[bufpos + 1]);
-							temp3 += size_t(Filter[x + 2][y + 2] * Raw[bufpos + 2]);
-						}
-					}
-					temp1 /= 273;
-					temp2 /= 273;
-					temp3 /= 273;
-
-					bufpos = (height - i - 1) * width * 3 + j * 3;
-					Smooth[bufpos] = BYTE(temp1);
-					Smooth[bufpos + 1] = BYTE(temp2);
-					Smooth[bufpos + 2] = BYTE(temp3);
-				}
-			}
-		}
-	}
-
-	int newHeight = ((height - 1) / 2) + 1;
-	int newWidth = ((width - 1) / 2) + 1;
-	result = new T[newWidth * newHeight * 3];
-	size_t gaussPos, smoothPos;
-
-	for (int i = 0, x = 0; i < height; i += 2, x++) {
-		for (int j = 0, y = 0; j < width; j += 2, y++) {
-			gaussPos = (newHeight - x - 1) * newWidth * 3 + y * 3;
-			smoothPos = (height - i - 1) * width * 3 + j * 3;
-
-			result[gaussPos + 2] = (T)Smooth[smoothPos + 2];
-			result[gaussPos + 1] = (T)Smooth[smoothPos + 1];
-			result[gaussPos] = (T)Smooth[smoothPos];
-		}
-	}
-
-	delete[] Smooth;
-	height = ((height - 1) / 2) + 1;
-	width = ((width - 1) / 2) + 1;
-
-	return result;
+    for(int y = 3; y < height - 2; y++)
+    {
+        memset(buffer, 255, 6);
+        memset(buffer + rowbytes - 6, 255, 6);
+    }
 }
 
 template<typename T>
-BYTE2* Expand(T* Gauss, int width, int height)
+T* GaussPyramid(const BYTE* raw, int& width, int& height, T* result)
+{
+    BYTE* smooth = new BYTE[width * height * 3];
+
+    fill_frame(smooth, width, height);
+
+    unsigned int row[width * 3];
+
+    for (auto y = 2; y < height - 2; y++)
+    {
+        for(auto ky = -2; ky <= 2; ky++)
+        {
+            for(auto x = 2; x < width - 2; x++)
+            {
+                auto roff = (height - (y + ky) - 1) * width * 3;
+                row[x * 3] += coeff[ky + 2][0] * (raw[roff + (x - 2) * 3] + raw[roff + (x + 2) * 3])
+                            + coeff[ky + 2][1] * (raw[roff + (x - 1) * 3] + raw[roff + (x + 1) * 3])
+                            + coeff[ky + 2][2] * raw[roff + x * 3];
+
+                row[x * 3 + 1] += coeff[ky + 2][0] * (raw[roff + (x - 2) * 3 + 1] + raw[roff + (x + 2) * 3 + 1])
+                                + coeff[ky + 2][1] * (raw[roff + (x - 1) * 3 + 1] + raw[roff + (x + 1) * 3 + 1])
+                                + coeff[ky + 2][2] * raw[roff + x * 3 + 1];
+
+                row[x * 3 + 2] += coeff[ky + 2][0] * (raw[roff + (x - 2) * 3 + 2] + raw[roff + (x + 2) * 3 + 2])
+                                + coeff[ky + 2][1] * (raw[roff + (x - 1) * 3 + 2] + raw[roff + (x + 1) * 3 + 2])
+                                + coeff[ky + 2][2] * raw[roff + x * 3 + 2];
+            }
+        }
+
+        auto roff = (height - y - 1) * width * 3;
+        for(auto x = 2; x < width - 2; x++)
+        {
+            auto i = roff + x * 3;
+            auto j = x * 3;
+            smooth[i]     = static_cast<BYTE>(row[j] / 273);
+            smooth[i + 1] = static_cast<BYTE>(row[j + 1] / 273);
+            smooth[i + 2] = static_cast<BYTE>(row[j + 2] / 273);
+        }
+        memset(row, 0, sizeof(row[0]) * width * 3);
+    }
+
+    int newHeight = ((height - 1) / 2) + 1;
+    int newWidth = ((width - 1) / 2) + 1;
+    result = new T[newWidth * newHeight * 3];
+    size_t gaussPos, smoothPos;
+
+    for (int i = 0, x = 0; i < height; i += 2, x++) {
+        for (int j = 0, y = 0; j < width; j += 2, y++) {
+            gaussPos = (newHeight - x - 1) * newWidth * 3 + y * 3;
+            smoothPos = (height - i - 1) * width * 3 + j * 3;
+
+            result[gaussPos + 2] = (T)smooth[smoothPos + 2];
+            result[gaussPos + 1] = (T)smooth[smoothPos + 1];
+            result[gaussPos] = (T)smooth[smoothPos];
+        }
+    }
+
+    delete[] smooth;
+    height = ((height - 1) / 2) + 1;
+    width = ((width - 1) / 2) + 1;
+
+    return result;
+}
+
+template<typename T>
+void copy_pixel(const T *src, int src_width, int src_height, BYTE2 *dst, int dst_width, int dst_height, int i, int j) {
+    auto indexi = i / 2;
+    auto indexj = j / 2;
+    auto dstpos = (dst_height - i - 1) * dst_width * 3 + j * 3;
+    auto srcpos = (src_height - indexi - 1) * src_width * 3 + indexj * 3;
+    dst[dstpos] = (BYTE2) src[srcpos];
+    dst[dstpos + 1] = (BYTE2) src[srcpos + 1];
+    dst[dstpos + 2] = (BYTE2) src[srcpos + 2];
+}
+
+template<typename T>
+void
+copy_frame(const T *src, int src_width, int src_height, BYTE2 *dst, int dst_width, int dst_height) {
+    for (int i = 0; i < 2; i++)
+    {
+        for (int j = 0; j < dst_width; j++)
+        {
+            copy_pixel(src, src_width, src_height, dst, dst_width, dst_height, i, j);
+        }
+    }
+
+    for (int i = dst_height - 2; i < dst_height; i++)
+    {
+        for (int j = 0; j < dst_width; j++)
+        {
+            copy_pixel(src, src_width, src_height, dst, dst_width, dst_height, i, j);
+        }
+    }
+
+    for (int i = 2; i < dst_height - 2; i++)
+    {
+        for (int j = 0; j < 2; j++)
+        {
+            copy_pixel(src, src_width, src_height, dst, dst_width, dst_height, i, j);
+        }
+    }
+
+    for (int i = 2; i < dst_height - 2; i++)
+    {
+        for (int j = dst_width - 2; j < dst_width; j++)
+        {
+            copy_pixel(src, src_width, src_height, dst, dst_width, dst_height, i, j);
+        }
+    }
+}
+
+template<typename T>
+BYTE2* Expand(T* gauss, int width, int height)
 {
     int Filter[5][5] = { {1,4,7,4,1},
                          {4,16,26,16,4},
@@ -294,55 +352,47 @@ BYTE2* Expand(T* Gauss, int width, int height)
                          {4,16,26,16,4},
                          {1,4,7,4,1} }; //273
 
-    int newwidth = ((width - 1) * 2) + 1;
-    int newheight = ((height - 1) * 2) + 1;
+    auto expwidth = (width - 1) * 2 + 1;
+    auto expheight = (height - 1) * 2 + 1;
 
-    BYTE2* Expand = new BYTE2[newwidth * newheight * 3];
+    BYTE2* expand = new BYTE2[expwidth * expheight * 3];
 
-    int bufpos, g_bufpos;
+    int expoff, gaussoff;
     int indexi, indexj;
     int temp1 = 0, temp2 = 0, temp3 = 0;
-    for (int i = 0; i < newheight; i++)
+
+    copy_frame(gauss, width, height, expand, expwidth, expheight);
+
+    for (int i = 2; i < expheight - 2; i++)
     {
-        for (int j = 0; j < newwidth; j++)
+        for (int j = 2; j < expwidth - 2; j++)
         {
-            if (i <= 1 || i >= newheight - 2 || j <= 1 || j >= newwidth - 2) {
-                indexi = i / 2;
-                indexj = j / 2;
-                bufpos = (newheight - i - 1) * newwidth * 3 + j * 3;
-                g_bufpos = (height - indexi - 1) * width * 3 + indexj * 3;
-                Expand[bufpos] = (BYTE2)Gauss[g_bufpos];
-                Expand[bufpos + 1] = (BYTE2)Gauss[g_bufpos + 1];
-                Expand[bufpos + 2] = (BYTE2)Gauss[g_bufpos + 2];
-            }
-            else {
-                for (int x = -2; x <= 2; x++)
+            for (int x = -2; x <= 2; x++)
+            {
+                for (int y = -2; y <= 2; y++)
                 {
-                    for (int y = -2; y <= 2; y++)
-                    {
-                        if ((i + x) % 2 == 0 && (j + y) % 2 == 0) {
-                            indexi = (i + x) / 2;
-                            indexj = (j + y) / 2;
-                            g_bufpos = (height - indexi - 1) * width * 3 + indexj * 3;
-                            temp1 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos];
-                            temp2 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos + 1];
-                            temp3 += Filter[x + 2][y + 2] * (int)Gauss[g_bufpos + 2];
-                        }
+                    if ((i + x) % 2 == 0 && (j + y) % 2 == 0) {
+                        indexi = (i + x) / 2;
+                        indexj = (j + y) / 2;
+                        gaussoff = (height - indexi - 1) * width * 3 + indexj * 3;
+                        temp1 += Filter[x + 2][y + 2] * (int)gauss[gaussoff];
+                        temp2 += Filter[x + 2][y + 2] * (int)gauss[gaussoff + 1];
+                        temp3 += Filter[x + 2][y + 2] * (int)gauss[gaussoff + 2];
                     }
                 }
-
-                temp1 /= 273;
-                temp2 /= 273;
-                temp3 /= 273;
-                bufpos = (newheight - i - 1) * newwidth * 3 + j * 3;
-                Expand[bufpos] = BYTE2(temp1 * 4);
-                Expand[bufpos + 1] = BYTE2(temp2 * 4);
-                Expand[bufpos + 2] = BYTE2(temp3 * 4);
             }
+
+            temp1 /= 273;
+            temp2 /= 273;
+            temp3 /= 273;
+            expoff = (expheight - i - 1) * expwidth * 3 + j * 3;
+            expand[expoff] = BYTE2(temp1 * 4);
+            expand[expoff + 1] = BYTE2(temp2 * 4);
+            expand[expoff + 2] = BYTE2(temp3 * 4);
         }
     }
 
-    return Expand;
+    return expand;
 }
 
 template<typename T>
